@@ -34,6 +34,7 @@ const HLFSecurityContext = require('../lib/hlfsecuritycontext');
 const path = require('path');
 const semver = require('semver');
 const fs = require('fs-extra');
+const zlib = require('zlib');
 
 const connectorPackageJSON = require('../package.json');
 const originalVersion = connectorPackageJSON.version;
@@ -2061,6 +2062,46 @@ describe('HLFConnection', () => {
         it('should submit a query request to the chaincode', () => {
             const response = Buffer.from('hello world');
             mockChannel.queryByChaincode.resolves([response]);
+            return connection.queryChainCode(mockSecurityContext, 'myfunc', ['arg1', 'arg2'])
+                .then((result) => {
+                    sinon.assert.calledOnce(mockChannel.queryByChaincode);
+                    sinon.assert.calledWith(mockChannel.queryByChaincode, {
+                        chaincodeId: 'org-acme-biznet',
+                        chaincodeVersion: connectorPackageJSON.version,
+                        txId: mockTransactionID,
+                        fcn: 'myfunc',
+                        args: ['arg1', 'arg2']
+                    });
+                    result.equals(response).should.be.true;
+                });
+        });
+
+        it('should submit a query request to the chaincode and receive non-gzipped response', () => {
+            const response = Buffer.from('hello world');
+            const typeByte = Buffer.alloc(1);
+            typeByte.writeInt8(1, 0);
+            mockChannel.queryByChaincode.resolves([Buffer.concat([typeByte, response], response.length + 1)]);
+            return connection.queryChainCode(mockSecurityContext, 'myfunc', ['arg1', 'arg2'])
+                .then((result) => {
+                    sinon.assert.calledOnce(mockChannel.queryByChaincode);
+                    sinon.assert.calledWith(mockChannel.queryByChaincode, {
+                        chaincodeId: 'org-acme-biznet',
+                        chaincodeVersion: connectorPackageJSON.version,
+                        txId: mockTransactionID,
+                        fcn: 'myfunc',
+                        args: ['arg1', 'arg2']
+                    });
+                    result.equals(response).should.be.true;
+                });
+        });
+
+
+        it('should submit a query request to the chaincode and receive gzipped response', () => {
+            const response = Buffer.from('hello world');
+            const responseZip = Buffer.from(zlib.deflateSync(response).toString('base64'));
+            const typeByte = Buffer.alloc(1);
+            typeByte.writeInt8(2, 0);
+            mockChannel.queryByChaincode.resolves([Buffer.concat([typeByte, responseZip], responseZip.length + 1)]);
             return connection.queryChainCode(mockSecurityContext, 'myfunc', ['arg1', 'arg2'])
                 .then((result) => {
                     sinon.assert.calledOnce(mockChannel.queryByChaincode);

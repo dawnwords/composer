@@ -15,6 +15,7 @@
 'use strict';
 const Connection = require('composer-common').Connection;
 const fs = require('fs-extra');
+const zlib = require('zlib');
 const HLFSecurityContext = require('./hlfsecuritycontext');
 const HLFUtil = require('./hlfutil');
 const Logger = require('composer-common').Logger;
@@ -764,6 +765,7 @@ class HLFConnection extends Connection {
             fcn: functionName,
             args: args
         };
+
         return this.channel.queryByChaincode(request)
             .then((payloads) => {
                 LOG.debug(method, `Received ${payloads.length} payloads(s) from querying the chaincode`, payloads);
@@ -772,18 +774,22 @@ class HLFConnection extends Connection {
                 }
                 const payload = payloads[0];
                 if (payload instanceof Error) {
-                    // will be handled by the catch block
                     throw payload;
                 }
-                LOG.exit(payload);
-                return payload;
+                switch(payload.readInt8(0)) {
+                case 1:
+                    return payload.slice(1);
+                case 2:
+                    return zlib.inflateSync(new Buffer(payload.slice(1).toString(), 'base64'));
+                default:
+                    return payload;
+                }
             })
             .catch((error) => {
                 const newError = new Error('Error trying to query chaincode. ' + error);
                 LOG.error(method, newError);
                 throw newError;
             });
-
     }
 
     /**
